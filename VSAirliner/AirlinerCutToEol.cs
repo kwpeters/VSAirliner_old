@@ -55,7 +55,17 @@ namespace VSAirliner
         /// </summary>
         private readonly AsyncPackage package;
 
+        /// <summary>
+        /// A timer that determines whether the user is killing text in rapid
+        /// succession.  When this happens, the killed text is appended to the
+        /// current clipboard contents.
+        /// </summary>
         private readonly System.Timers.Timer accrueTimer;
+
+        /// <summary>
+        /// A regular expression that matches whitespace followed by
+        /// non-whitespace.
+        /// </summary>
         private readonly Regex textWithLeadingWhitespace = new Regex(@"^(?<leadingWhitespace>\s+)\S+");
 
         /// <summary>
@@ -123,17 +133,6 @@ namespace VSAirliner
         private void Execute(object sender, EventArgs e)
         {
             ThreadHelper.ThrowIfNotOnUIThread();
-            //string message = string.Format(CultureInfo.CurrentCulture, "Inside {0}.MenuItemCallback()", this.GetType().FullName);
-            //string title = "AirlinerCutToEol";
-
-            // Show a message box to prove we were here
-            //VsShellUtilities.ShowMessageBox(
-            //    this.package,
-            //    message,
-            //    title,
-            //    OLEMSGICON.OLEMSGICON_INFO,
-            //    OLEMSGBUTTON.OLEMSGBUTTON_OK,
-            //    OLEMSGDEFBUTTON.OLEMSGDEFBUTTON_FIRST);
 
             // Get some information about the current document.
             var docInfoRes = this.GetDocInfo();
@@ -237,6 +236,11 @@ namespace VSAirliner
             this.accrueTimer.Start();
         }
 
+        /// <summary>
+        /// Convenience helper method for getting useful information about the
+        /// document being edited.
+        /// </summary>
+        /// <returns>A data structure containing useful information.</returns>
         private Nullable<DocInfo> GetDocInfo()
         {
             IWpfTextView view = ProjectHelpers.GetCurentTextView();
@@ -249,6 +253,11 @@ namespace VSAirliner
             return new DocInfo(view, snapshot, selection, curLine);
         }
 
+        /// <summary>
+        /// Gets text from the clipboard and accounts for the possibility there
+        /// is no text on the clipboard.
+        /// </summary>
+        /// <returns>Text from the clipboard or an empty string.</returns>
         private string GetClipboardText()
         {
             return Clipboard.ContainsText() ? Clipboard.GetText() : "";
