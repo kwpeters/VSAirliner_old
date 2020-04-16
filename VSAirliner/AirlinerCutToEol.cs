@@ -1,0 +1,257 @@
+﻿using System;
+using System.ComponentModel.Design;
+using System.Globalization;
+using System.Threading;
+using System.Threading.Tasks;
+using Microsoft.VisualStudio.Shell;
+using Microsoft.VisualStudio.Shell.Interop;
+using Task = System.Threading.Tasks.Task;
+using System.Text.RegularExpressions;
+using Microsoft.VisualStudio.Text.Editor;
+using System.Windows;
+using System.Windows.Forms;
+using Microsoft.VisualStudio.Text;
+using System.Diagnostics;
+
+namespace VSAirliner
+{
+    // one
+    // two
+    // three
+    // four
+    // five
+    // six
+
+    public struct DocInfo
+    {
+        public readonly IWpfTextView View;
+        public readonly ITextSnapshot Snapshot;
+        public readonly int CursorPos;
+        public readonly ITextSnapshotLine CurLine;
+
+        public DocInfo(IWpfTextView view, ITextSnapshot snapshot, int cursorPos, ITextSnapshotLine curLine)
+        {
+            View = view;
+            Snapshot = snapshot;
+            CursorPos = cursorPos;
+            CurLine = curLine;
+        }
+    }
+
+    /// <summary>
+    /// Command handler
+    /// </summary>
+    internal sealed class AirlinerCutToEol
+    {
+        /// <summary>
+        /// Command ID.
+        /// </summary>
+        public const int CommandId = 0x0100;
+
+        /// <summary>
+        /// Command menu group (command set GUID).
+        /// </summary>
+        public static readonly Guid CommandSet = new Guid("8bf2d3cd-5f4b-4158-989a-05d405c58789");
+
+        /// <summary>
+        /// VS Package that provides this command, not null.
+        /// </summary>
+        private readonly AsyncPackage package;
+
+        private readonly System.Timers.Timer accrueTimer;
+        private readonly Regex textWithLeadingWhitespace = new Regex(@"^(?<leadingWhitespace>\s+)\S+");
+
+        /// <summary>
+        /// Initializes a new instance of the <see cref="AirlinerCutToEol"/> class.
+        /// Adds our command handlers for menu (commands must exist in the command table file)
+        /// </summary>
+        /// <param name="package">Owner package, not null.</param>
+        /// <param name="commandService">Command service to add command to, not null.</param>
+        private AirlinerCutToEol(AsyncPackage package, OleMenuCommandService commandService)
+        {
+            this.package = package ?? throw new ArgumentNullException(nameof(package));
+            commandService = commandService ?? throw new ArgumentNullException(nameof(commandService));
+
+            var menuCommandID = new CommandID(CommandSet, CommandId);
+            var menuItem = new MenuCommand(this.Execute, menuCommandID);
+            commandService.AddCommand(menuItem);
+
+            this.accrueTimer = new System.Timers.Timer();
+            accrueTimer.Interval = 2500;
+            accrueTimer.AutoReset = false;
+
+        }
+
+        /// <summary>
+        /// Gets the instance of the command.
+        /// </summary>
+        public static AirlinerCutToEol Instance
+        {
+            get;
+            private set;
+        }
+
+        /// <summary>
+        /// Gets the service provider from the owner package.
+        /// </summary>
+        private Microsoft.VisualStudio.Shell.IAsyncServiceProvider ServiceProvider
+        {
+            get
+            {
+                return this.package;
+            }
+        }
+
+        /// <summary>
+        /// Initializes the singleton instance of the command.
+        /// </summary>
+        /// <param name="package">Owner package, not null.</param>
+        public static async Task InitializeAsync(AsyncPackage package)
+        {
+            // Switch to the main thread - the call to AddCommand in AirlinerCutToEol's constructor requires
+            // the UI thread.
+            await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync(package.DisposalToken);
+
+            OleMenuCommandService commandService = await package.GetServiceAsync(typeof(IMenuCommandService)) as OleMenuCommandService;
+            Instance = new AirlinerCutToEol(package, commandService);
+        }
+
+        /// <summary>
+        /// This function is the callback used to execute the command when the menu item is clicked.
+        /// See the constructor to see how the menu item is associated with this function using
+        /// OleMenuCommandService service and MenuCommand class.
+        /// </summary>
+        /// <param name="sender">Event sender.</param>
+        /// <param name="e">Event args.</param>
+        private void Execute(object sender, EventArgs e)
+        {
+            ThreadHelper.ThrowIfNotOnUIThread();
+            //string message = string.Format(CultureInfo.CurrentCulture, "Inside {0}.MenuItemCallback()", this.GetType().FullName);
+            //string title = "AirlinerCutToEol";
+
+            // Show a message box to prove we were here
+            //VsShellUtilities.ShowMessageBox(
+            //    this.package,
+            //    message,
+            //    title,
+            //    OLEMSGICON.OLEMSGICON_INFO,
+            //    OLEMSGBUTTON.OLEMSGBUTTON_OK,
+            //    OLEMSGDEFBUTTON.OLEMSGDEFBUTTON_FIRST);
+
+
+
+            //
+            // TODO: If there is a selection, just cut the selected text.
+            //
+
+            var docInfoRes = this.GetDocInfo();
+            if (!docInfoRes.HasValue)
+            {
+                return;
+            }
+            var docInfo = docInfoRes.Value;
+
+            // If we are accruing copied text (due to the timeout timer), then
+            // the text we need to copy should start with the current clipboard
+            // contents.
+            string textToCopy = this.accrueTimer.Enabled ? this.GetClipboardText() : "";
+
+            // Get the text that follows the cursor to the EOL.
+            int eolPos = docInfo.CurLine.End.Position;
+            Span toEolSpan = new Span(docInfo.CursorPos, eolPos - docInfo.CursorPos);
+            string toEolText = docInfo.Snapshot.GetText(toEolSpan);
+
+            if (toEolText.Length > 0)
+            {
+                // If the text remaining on the line is whitespace followed by
+                // non-whitespace, then kill just the leading whitespace.  By
+                // removing just the whitespace, we will make joining two lines
+                // easier.
+                var match = textWithLeadingWhitespace.Match(toEolText);
+                if (match.Success)
+                {
+                    string leadingWhitespace = match.Groups["leadingWhitespace"].Value;
+                    textToCopy += leadingWhitespace;
+
+                    // Remove the whitespace from the document.
+                    using (var edit = docInfo.Snapshot.TextBuffer.CreateEdit())
+                    {
+                        edit.Delete(docInfo.CursorPos, leadingWhitespace.Length);
+                        edit.Apply();
+                    }
+                }
+                else
+                {
+                    textToCopy += toEolText;
+
+                    // Remove the kill text from the document.
+                    using (var edit = docInfo.Snapshot.TextBuffer.CreateEdit())
+                    {
+                        edit.Delete(docInfo.CursorPos, toEolText.Length);
+                        edit.Apply();
+                    }
+                }
+            }
+            else
+            {
+                // Delete the \n and \r characters that follow the cursor
+                // position.
+                int numCharsToDelete = 0;
+                bool nextCharIsLineEndingChar = false;
+                do
+                {
+                    string nextChar = docInfo.Snapshot.GetText(docInfo.CursorPos + numCharsToDelete, 1);
+                    nextCharIsLineEndingChar = nextChar == "\n" || nextChar == "\r";
+                    if (nextCharIsLineEndingChar)
+                    {
+                        numCharsToDelete += 1;
+                    }
+
+                } while (nextCharIsLineEndingChar && numCharsToDelete < 2);
+
+                textToCopy += docInfo.Snapshot.GetText(docInfo.CursorPos, numCharsToDelete);
+
+                using (var edit = docInfo.Snapshot.TextBuffer.CreateEdit())
+                {
+                    edit.Delete(docInfo.CursorPos, numCharsToDelete);
+                    edit.Apply();
+                }
+            }
+
+            Clipboard.SetText(textToCopy);
+
+            // Restart the accrue timer.
+            this.accrueTimer.Stop();
+            this.accrueTimer.Start();
+        }
+
+        private Nullable<DocInfo> GetDocInfo()
+        {
+            IWpfTextView view = ProjectHelpers.GetCurentTextView();
+            if (view == null)
+                return null;
+
+            ITextSnapshot snapshot = view.TextSnapshot;
+            int cursorPos = view.Selection.ActivePoint.Position.Position;
+            ITextSnapshotLine curLine = snapshot.GetLineFromPosition(cursorPos);
+
+            return new DocInfo(view, snapshot, cursorPos, curLine);
+        }
+
+        private string GetClipboardText()
+        {
+            return Clipboard.ContainsText() ? Clipboard.GetText() : "";
+        }
+
+        private void MessageBox(string message)
+        {
+            VsShellUtilities.ShowMessageBox(
+                this.package,
+                message,
+                "Debug Message",
+                OLEMSGICON.OLEMSGICON_INFO,
+                OLEMSGBUTTON.OLEMSGBUTTON_OK,
+                OLEMSGDEFBUTTON.OLEMSGDEFBUTTON_FIRST);
+        }
+    }
+}
