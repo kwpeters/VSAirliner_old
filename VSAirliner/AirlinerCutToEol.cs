@@ -15,25 +15,22 @@ using System.Diagnostics;
 
 namespace VSAirliner
 {
-    // one
-    // two
-    // three
-    // four
-    // five
-    // six
-
     public struct DocInfo
     {
         public readonly IWpfTextView View;
         public readonly ITextSnapshot Snapshot;
-        public readonly int CursorPos;
+        public ITextSelection Selection;
+        public int AnchorPos;
+        public int ActivePos;
         public readonly ITextSnapshotLine CurLine;
 
-        public DocInfo(IWpfTextView view, ITextSnapshot snapshot, int cursorPos, ITextSnapshotLine curLine)
+        public DocInfo(IWpfTextView view, ITextSnapshot snapshot, ITextSelection selection, ITextSnapshotLine curLine)
         {
-            View = view;
-            Snapshot = snapshot;
-            CursorPos = cursorPos;
+            this.View = view;
+            this.Snapshot = snapshot;
+            this.Selection = selection;
+            this.AnchorPos = selection.AnchorPoint.Position.Position;
+            this.ActivePos = selection.ActivePoint.Position.Position;
             CurLine = curLine;
         }
     }
@@ -138,12 +135,7 @@ namespace VSAirliner
             //    OLEMSGBUTTON.OLEMSGBUTTON_OK,
             //    OLEMSGDEFBUTTON.OLEMSGDEFBUTTON_FIRST);
 
-
-
-            //
-            // TODO: If there is a selection, just cut the selected text.
-            //
-
+            // Get some information about the current document.
             var docInfoRes = this.GetDocInfo();
             if (!docInfoRes.HasValue)
             {
@@ -151,14 +143,34 @@ namespace VSAirliner
             }
             var docInfo = docInfoRes.Value;
 
+            //
+            // If there is currently a selection, just cut that and be done.
+            //
+            if (docInfo.AnchorPos != docInfo.ActivePos)
+            {
+                int start = Math.Min(docInfo.AnchorPos, docInfo.ActivePos);
+                int end   = Math.Max(docInfo.AnchorPos, docInfo.ActivePos);
+
+                string selectedText = docInfo.Snapshot.GetText(start, end - start);
+                Clipboard.SetText(selectedText);
+                using (var edit = docInfo.Snapshot.TextBuffer.CreateEdit())
+                {
+                    edit.Delete(start, end - start);
+                    edit.Apply();
+                }
+
+                return;
+            }
+
+
             // If we are accruing copied text (due to the timeout timer), then
             // the text we need to copy should start with the current clipboard
             // contents.
             string textToCopy = this.accrueTimer.Enabled ? this.GetClipboardText() : "";
 
-            // Get the text that follows the cursor to the EOL.
+            // Get the text that follows the caret to the EOL.
             int eolPos = docInfo.CurLine.End.Position;
-            Span toEolSpan = new Span(docInfo.CursorPos, eolPos - docInfo.CursorPos);
+            Span toEolSpan = new Span(docInfo.ActivePos, eolPos - docInfo.ActivePos);
             string toEolText = docInfo.Snapshot.GetText(toEolSpan);
 
             if (toEolText.Length > 0)
@@ -176,7 +188,7 @@ namespace VSAirliner
                     // Remove the whitespace from the document.
                     using (var edit = docInfo.Snapshot.TextBuffer.CreateEdit())
                     {
-                        edit.Delete(docInfo.CursorPos, leadingWhitespace.Length);
+                        edit.Delete(docInfo.ActivePos, leadingWhitespace.Length);
                         edit.Apply();
                     }
                 }
@@ -187,20 +199,20 @@ namespace VSAirliner
                     // Remove the kill text from the document.
                     using (var edit = docInfo.Snapshot.TextBuffer.CreateEdit())
                     {
-                        edit.Delete(docInfo.CursorPos, toEolText.Length);
+                        edit.Delete(docInfo.ActivePos, toEolText.Length);
                         edit.Apply();
                     }
                 }
             }
             else
             {
-                // Delete the \n and \r characters that follow the cursor
+                // Delete the \n and \r characters that follow the caret
                 // position.
                 int numCharsToDelete = 0;
-                bool nextCharIsLineEndingChar = false;
+                bool nextCharIsLineEndingChar;
                 do
                 {
-                    string nextChar = docInfo.Snapshot.GetText(docInfo.CursorPos + numCharsToDelete, 1);
+                    string nextChar = docInfo.Snapshot.GetText(docInfo.ActivePos + numCharsToDelete, 1);
                     nextCharIsLineEndingChar = nextChar == "\n" || nextChar == "\r";
                     if (nextCharIsLineEndingChar)
                     {
@@ -209,11 +221,11 @@ namespace VSAirliner
 
                 } while (nextCharIsLineEndingChar && numCharsToDelete < 2);
 
-                textToCopy += docInfo.Snapshot.GetText(docInfo.CursorPos, numCharsToDelete);
+                textToCopy += docInfo.Snapshot.GetText(docInfo.ActivePos, numCharsToDelete);
 
                 using (var edit = docInfo.Snapshot.TextBuffer.CreateEdit())
                 {
-                    edit.Delete(docInfo.CursorPos, numCharsToDelete);
+                    edit.Delete(docInfo.ActivePos, numCharsToDelete);
                     edit.Apply();
                 }
             }
@@ -232,10 +244,9 @@ namespace VSAirliner
                 return null;
 
             ITextSnapshot snapshot = view.TextSnapshot;
-            int cursorPos = view.Selection.ActivePoint.Position.Position;
-            ITextSnapshotLine curLine = snapshot.GetLineFromPosition(cursorPos);
-
-            return new DocInfo(view, snapshot, cursorPos, curLine);
+            ITextSelection selection = view.Selection;
+            ITextSnapshotLine curLine = snapshot.GetLineFromPosition(selection.ActivePoint.Position.Position);
+            return new DocInfo(view, snapshot, selection, curLine);
         }
 
         private string GetClipboardText()
@@ -243,15 +254,15 @@ namespace VSAirliner
             return Clipboard.ContainsText() ? Clipboard.GetText() : "";
         }
 
-        private void MessageBox(string message)
-        {
-            VsShellUtilities.ShowMessageBox(
-                this.package,
-                message,
-                "Debug Message",
-                OLEMSGICON.OLEMSGICON_INFO,
-                OLEMSGBUTTON.OLEMSGBUTTON_OK,
-                OLEMSGDEFBUTTON.OLEMSGDEFBUTTON_FIRST);
-        }
+        //private void MessageBox(string message)
+        //{
+        //    VsShellUtilities.ShowMessageBox(
+        //        this.package,
+        //        message,
+        //        "Debug Message",
+        //        OLEMSGICON.OLEMSGICON_INFO,
+        //        OLEMSGBUTTON.OLEMSGBUTTON_OK,
+        //        OLEMSGDEFBUTTON.OLEMSGDEFBUTTON_FIRST);
+        //}
     }
 }
