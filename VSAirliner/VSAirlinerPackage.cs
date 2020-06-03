@@ -48,6 +48,7 @@ namespace VSAirliner
             // Do any initialization that requires the UI thread after switching to the UI thread.
             await this.JoinableTaskFactory.SwitchToMainThreadAsync(cancellationToken);
             await AirlinerCutToEol.InitializeAsync(this);
+            await AirlinerAppendSemicolon.InitializeAsync(this);
         }
 
         #endregion
