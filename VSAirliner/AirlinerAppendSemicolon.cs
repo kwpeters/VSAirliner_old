@@ -103,8 +103,11 @@ namespace VSAirliner
                 return;
             }
             var docInfo = docInfoRes.Value;
-
-            MessageBox("Hello from AirlinerAppendSemicolon!");
+            using (var edit = docInfo.Snapshot.TextBuffer.CreateEdit())
+            {
+                edit.Insert(docInfo.CurLine.End.Position, ";");
+                edit.Apply();
+            }
         }
 
         /// <summary>
@@ -134,15 +137,15 @@ namespace VSAirliner
             return Clipboard.ContainsText() ? Clipboard.GetText() : "";
         }
 
-        private void MessageBox(string message)
-        {
-            VsShellUtilities.ShowMessageBox(
-                this.package,
-                message,
-                "Debug Message",
-                OLEMSGICON.OLEMSGICON_INFO,
-                OLEMSGBUTTON.OLEMSGBUTTON_OK,
-                OLEMSGDEFBUTTON.OLEMSGDEFBUTTON_FIRST);
-        }
+        //private void MessageBox(string message)
+        //{
+        //    VsShellUtilities.ShowMessageBox(
+        //        this.package,
+        //        message,
+        //        "Debug Message",
+        //        OLEMSGICON.OLEMSGICON_INFO,
+        //        OLEMSGBUTTON.OLEMSGBUTTON_OK,
+        //        OLEMSGDEFBUTTON.OLEMSGDEFBUTTON_FIRST);
+        //}
     }
 }
