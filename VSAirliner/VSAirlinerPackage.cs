@@ -49,6 +49,7 @@ namespace VSAirliner
             await this.JoinableTaskFactory.SwitchToMainThreadAsync(cancellationToken);
             await AirlinerCutToEol.InitializeAsync(this);
             await AirlinerAppendSemicolon.InitializeAsync(this);
+            await AirlinerHungryBackspace.InitializeAsync(this);
         }
 
         #endregion

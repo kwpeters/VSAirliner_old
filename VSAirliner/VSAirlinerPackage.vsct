@@ -66,6 +66,13 @@
           <ButtonText>Invoke AirlinerAppendSemicolon</ButtonText>
         </Strings>
       </Button>
+      <Button guid="guidVSAirlinerPackageCmdSet" id="AirlinerHungryBackspace" priority="0x0100" type="Button">
+        <Parent guid="guidVSAirlinerPackageCmdSet" id="MyMenuGroup" />
+        <!-- <Icon guid="guidImages" id="bmpPic1" /> -->
+        <Strings>
+          <ButtonText>Invoke AirlinerHungryBackspace</ButtonText>
+        </Strings>
+      </Button>
     </Buttons>
 
     <!--The bitmaps section is used to define the bitmaps that are used for the commands.-->
@@ -86,8 +93,9 @@
     <!-- This is the guid used to group the menu commands together -->
     <GuidSymbol name="guidVSAirlinerPackageCmdSet" value="{8bf2d3cd-5f4b-4158-989a-05d405c58789}">
       <IDSymbol name="MyMenuGroup" value="0x1020" />
-      <IDSymbol name="AirlinerCutToEolId" value="0x0100" />
+      <IDSymbol name="AirlinerCutToEolId"      value="0x0100" />
       <IDSymbol name="AirlinerAppendSemicolon" value="0x0101" />
+      <IDSymbol name="AirlinerHungryBackspace" value="0x0102" />
     </GuidSymbol>
 
     <GuidSymbol name="guidImages" value="{e4844af5-019d-47c1-861b-b67a1551ff70}" >
